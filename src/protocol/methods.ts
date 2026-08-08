@@ -14,9 +14,10 @@ export interface Agent {
   description?: string
 }
 
-// TODO: confirm full Session shape — sessions.create guarantees sessionKey per section 5.2
+// Confirmed from control-ui source: sessions.create returns `key` (not `sessionKey`)
 export interface Session {
-  sessionKey: string
+  key: string        // primary field: confirmed from control-ui source
+  sessionKey?: string // legacy alias present in some contexts
   agentId?: string
   createdAt?: string
   updatedAt?: string
@@ -72,16 +73,16 @@ export interface TtsSpeakResult {
 
 /**
  * Send a user message to a session. Side-effect method — generates an idempotency key.
- * TODO: confirm exact param name for the message body (may be "message" or "text" — using "content" for now)
+ * Confirmed from control-ui source: param is `message` (not `content`).
  */
 export async function chatSend(
   client: GatewayClient,
   sessionKey: string,
-  content: string,
+  message: string,
 ): Promise<ChatSendResult> {
   return client.call('chat.send', {
     sessionKey,
-    content,
+    message,
     idempotencyKey: crypto.randomUUID(),
   }) as Promise<ChatSendResult>
 }
@@ -128,16 +129,13 @@ export async function sessionsList(
 
 /**
  * Create a new session for an agent. Returns the new session including its sessionKey.
- * Side-effect — idempotency key generated automatically.
+ * NOTE: sessions.create rejects unknown properties — idempotencyKey confirmed NOT accepted.
  */
 export async function sessionsCreate(
   client: GatewayClient,
   agentId: string,
 ): Promise<Session> {
-  return client.call('sessions.create', {
-    agentId,
-    idempotencyKey: crypto.randomUUID(),
-  }) as Promise<Session>
+  return client.call('sessions.create', { agentId }) as Promise<Session>
 }
 
 /** Fetch the full session row for a given sessionKey. */
@@ -156,10 +154,8 @@ export async function sessionsReset(
   client: GatewayClient,
   sessionKey: string,
 ): Promise<void> {
-  await client.call('sessions.reset', {
-    sessionKey,
-    idempotencyKey: crypto.randomUUID(),
-  })
+  // NOTE: if sessions.reset also rejects idempotencyKey (same schema as create), remove it here too
+  await client.call('sessions.reset', { sessionKey })
 }
 
 /**
@@ -169,8 +165,12 @@ export async function sessionsReset(
 export async function sessionsSubscribe(
   client: GatewayClient,
   sessionKey: string,
+  agentId?: string,
 ): Promise<void> {
-  await client.call('sessions.messages.subscribe', { sessionKey })
+  // Confirmed from control-ui source: param is `key` (not `sessionKey`), optional `agentId`
+  const params: Record<string, unknown> = { key: sessionKey }
+  if (agentId !== undefined) params.agentId = agentId
+  await client.call('sessions.messages.subscribe', params)
 }
 
 /** Unsubscribe from transcript events for a session. */
@@ -178,7 +178,8 @@ export async function sessionsUnsubscribe(
   client: GatewayClient,
   sessionKey: string,
 ): Promise<void> {
-  await client.call('sessions.messages.unsubscribe', { sessionKey })
+  // Same convention: `key` not `sessionKey`
+  await client.call('sessions.messages.unsubscribe', { key: sessionKey })
 }
 
 // ── Agents ───────────────────────────────────────────────────────────────────
