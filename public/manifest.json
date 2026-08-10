@@ -4,8 +4,8 @@
   "description": "OpenClaw Gateway — interfaz de chat local",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0b0303",
-  "theme_color": "#ef0011",
+  "background_color": "#060402",
+  "theme_color": "#060402",
   "lang": "es",
   "icons": [
     {
