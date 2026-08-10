@@ -222,7 +222,8 @@ export default function ChatView() {
         {/* Header */}
         <header className="flex items-center gap-4 border-b border-line px-4 py-2.5">
           <div className="flex items-center gap-2.5">
-            <span className="oc-glow text-[15px] font-semibold tracking-[2px] text-amber">OPENCLAW</span>
+            <span className="oc-glow text-[15px] font-semibold tracking-[2px] text-amber">J.A.R.V.I.S</span>
+            <span className="text-[9px] tracking-[1px] text-dim hidden sm:inline">Just A Rather Very Intelligent System</span>
             <span className="oc-blink inline-block h-4 w-[9px] bg-amber shadow-[0_0_8px_rgb(255_176_0/0.5)]" />
           </div>
           <span className="text-[10px] tracking-[2px] text-faint">◤ ENLACE GW</span>
