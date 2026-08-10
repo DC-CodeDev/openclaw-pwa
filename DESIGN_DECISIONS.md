@@ -2,7 +2,7 @@
 
 > Estado: decisiones cerradas en reunión de diseño, previas a implementación con CC.
 > Este documento complementa (no reemplaza) `openclaw-pwa-frontend.md`, que sigue siendo la fuente de verdad del protocolo Gateway v4.
-> Fecha de cierre de esta ronda: 2026-08-07 (actualizado 2026-08-09 — cierre de investigación de tokens y run limiter, ver secciones 7 y 8bis)
+> Fecha de cierre de esta ronda: 2026-08-07 (actualizado 2026-08-10 — PWA de producción instalable con Caddy + systemd, ver sección 13)
 
 ---
 
@@ -560,7 +560,70 @@ src/
 - [x] ~~Resolver `tts.speak` no disponible en el gateway instalado (2026.6.2)~~ → resuelto, se adopta `tts.convert` + endpoint de media con proxy, ver sección 7
 - [x] ~~Investigar consumo excesivo de tokens en el PWA (30x vs terminal, luego 12.7x residual)~~ → resuelto en dos partes: bug real de `role: "toolResult"` sin filtrar (contenido crudo de herramientas inflando el historial reenviado) + bug de métrica del StatusBar (acumulado histórico mostrado como costo puntual). El residual de 12.7x no era un bug, era estado de cache del provider (frío vs cálido), confirmado con experimento de matriz canal×cache. Ver sección 7, capítulo final
 - [ ] Manejar sesiones "ocupadas" en la UI — detectado en pruebas de Fase 6: si la primera sesión del listado corresponde a la consola TUI y está en uso, `chat.send` desde el PWA queda encolado sin respuesta (no es un bug, la sesión está legítimamente ocupada por otro cliente). Falta indicar esto visualmente o deshabilitar sesiones ocupadas en `SessionList`
-- [ ] Definir proxy de producción para `/__openclaw__/*` — en dev ya lo resuelve `vite.config.ts`, en producción hace falta un reverse proxy equivalente (ver hallazgo de CORS en sección 7)
+- [x] ~~Definir proxy de producción para `/__openclaw__/*`~~ → resuelto con Caddy en :8080, ver sección 13
+
+---
+
+## 13. Producción — PWA instalable con Caddy (2026-08-10)
+
+### Arquitectura de producción
+
+```
+Browser (localhost:8080, standalone PWA)
+    │
+    ├── /* → Caddy → dist/  (build estático de Vite)
+    ├── /__openclaw__/* → Caddy → 127.0.0.1:18789  (gateway, solo HTTP: TTS/media)
+    └── WebSocket → 127.0.0.1:18789/  (directo al gateway, NUNCA pasa por Caddy)
+```
+
+El puerto 8080 corre permanentemente como servicio systemd de usuario (`openclaw-pwa.service`). El 5173 queda libre para `bun run dev` durante desarrollo. Ambos pueden correr en paralelo sin choque.
+
+**Corrección importante de arquitectura, confirmada con evidencia real (frames de handshake capturados):** el WebSocket del chat (`connect.challenge` → `connect.req` → `hello-ok` → streaming) conecta **directo** a `ws://127.0.0.1:18789/`, sin pasar por el proxy de Caddy. Esto no es una particularidad de producción — nunca pasó por proxy tampoco en dev (Vite no lo interceptaba). El proxy `/__openclaw__/*` siempre fue exclusivamente para las llamadas HTTP de audio/media (`tts.convert` y el endpoint de media), nunca para la conexión de chat en sí. Vale la pena tenerlo claro para no asumir en el futuro que un cambio en el Caddyfile afecta el streaming del chat — no lo hace.
+
+**Pairing por origen — bloqueante esperado la primera vez, no un bug.** `IndexedDB` (donde se persiste el device pareado) es origin-scoped: el device aprobado en `http://localhost:5173` (dev) no existe automáticamente en `http://localhost:8080` (prod), porque son orígenes distintos para el navegador. La primera conexión desde `:8080` dispara `PAIRING_REQUIRED`; se resuelve con `openclaw devices approve <requestId>` (el `requestId` se obtiene con `openclaw devices list`) una única vez — después el device queda persistido en ese origen para siempre.
+
+**El Caddy de este servicio es independiente del Caddy de sistema.** Ya existía otra instancia de Caddy corriendo en la máquina (`caddy.service`, system-level, no user-level) sirviendo otra app distinta en `:443` con TLS interno, con proxy a `localhost:3000`. Son procesos completamente separados — configs distintas (`/etc/caddy/Caddyfile` vs `~/Projects/openclaw-pwa/Caddyfile`), puertos distintos, sin dominio ni infraestructura compartida. El único punto de fricción fue que ambos intentaban tomar el puerto 2019 (admin API de Caddy por default) — resuelto con `admin off` en el Caddyfile de este proyecto, ya que no se necesita la admin API para este uso.
+
+### Componentes
+
+| Archivo | Propósito |
+|---|---|
+| `Caddyfile` | Servidor estático + proxy del gateway |
+| `public/manifest.json` | Metadata PWA (nombre, íconos, display: standalone) |
+| `public/sw.js` | Service worker mínimo (requerido para instalabilidad) |
+| `public/icons/icon-{192,512}.png` | Íconos generados desde `openclaw.svg` con rsvg-convert |
+| `~/.config/systemd/user/openclaw-pwa.service` | User service, patrón consistente con openclaw-gateway |
+
+### Flujo de actualización de producción
+
+Cada vez que querés publicar cambios al servidor de producción:
+
+```bash
+# 1. Generar el build (desde el directorio del proyecto)
+bun run build
+
+# 2. Reiniciar el servicio para que Caddy sirva el nuevo dist/
+systemctl --user restart openclaw-pwa
+
+# 3. (opcional) Verificar que levantó bien
+systemctl --user status openclaw-pwa
+```
+
+No hace falta recargar systemd ni tocar el Caddyfile a menos que cambies la configuración del servidor. Caddy sirve archivos estáticos directamente desde `dist/` — el restart solo reinicia el proceso Caddy, que en el siguiente request sirve los archivos nuevos.
+
+Para verificar que los cambios tomaron efecto, abre `http://localhost:8080` en el navegador y hacé hard refresh (Ctrl+Shift+R) para saltear el caché del browser.
+
+### Instalación como PWA
+
+En Chrome/Chromium: abrí `http://localhost:8080`, esperá que el SW se registre (primera carga), y el ícono de instalación aparece en la barra de direcciones. Instalá → se abre en ventana standalone sin barra del navegador.
+
+### Reinstalación del servicio (si se mueve el repo)
+
+```bash
+# Editar la ruta en el Caddyfile y en el .service si movés el directorio
+systemctl --user daemon-reload
+systemctl --user restart openclaw-pwa
+```
 
 ---
 

@@ -1,0 +1,19 @@
+{
+	admin off
+}
+
+:8080 {
+	root * /home/diego/Projects/openclaw-pwa/dist
+
+	# Proxy al gateway — replica el comportamiento de vite.config.ts en producción.
+	# Caddy pasa automáticamente el Upgrade header para WebSocket si el gateway lo necesita.
+	handle /__openclaw__/* {
+		reverse_proxy http://127.0.0.1:18789
+	}
+
+	# SPA: cualquier ruta no encontrada cae a index.html (React Router).
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+}
