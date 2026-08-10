@@ -1,4 +1,5 @@
-// Text input: Enter sends, Shift+Enter inserts newline. Disabled while not connected.
+// Text input: Enter sends, Shift+Enter inserts newline.
+// Disabled when not connected or when no active session exists.
 
 import { useRef, useState } from 'react'
 import type { ConnectionState } from '../protocol/client.ts'
@@ -6,14 +7,16 @@ import type { ConnectionState } from '../protocol/client.ts'
 interface ComposerProps {
   onSend: (text: string) => Promise<void>
   connectionState: ConnectionState
+  hasSession: boolean
 }
 
-export default function Composer({ onSend, connectionState }: ComposerProps) {
+export default function Composer({ onSend, connectionState, hasSession }: ComposerProps) {
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const canSend = connectionState === 'connected' && !sending && text.trim().length > 0
+  const isConnected = connectionState === 'connected'
+  const canSend = isConnected && hasSession && !sending && text.trim().length > 0
 
   async function handleSend() {
     const trimmed = text.trim()
@@ -26,7 +29,8 @@ export default function Composer({ onSend, connectionState }: ComposerProps) {
       console.error('[Composer] send failed:', err)
     } finally {
       setSending(false)
-      textareaRef.current?.focus()
+      // setTimeout defers focus() past the React re-render that re-enables the element
+      setTimeout(() => textareaRef.current?.focus(), 0)
     }
   }
 
@@ -37,44 +41,35 @@ export default function Composer({ onSend, connectionState }: ComposerProps) {
     }
   }
 
-  const placeholder =
-    connectionState === 'connected'
-      ? 'Escribí un mensaje… (Enter para enviar, Shift+Enter para nueva línea)'
-      : 'Conectando al gateway…'
+  const placeholder = !isConnected
+    ? 'conectando al gateway…'
+    : !hasSession
+      ? 'creá una sesión para empezar →'
+      : 'escribí un mensaje… (enter envía, shift+enter nueva línea)'
 
   return (
-    <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: '1px solid #333' }}>
+    <div className="flex items-end gap-3 border-t border-line px-5 py-3">
+      <span className={`oc-glow pb-2 font-semibold ${hasSession && isConnected ? 'text-amber' : 'text-faint'}`}>❯</span>
       <textarea
         ref={textareaRef}
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}
-        disabled={connectionState !== 'connected' || sending}
+        disabled={!isConnected || !hasSession}
         placeholder={placeholder}
         rows={2}
-        style={{
-          flex: 1,
-          fontFamily: 'monospace',
-          fontSize: 14,
-          resize: 'none',
-          padding: '6px 8px',
-          background: '#1a1a1a',
-          color: '#eee',
-          border: '1px solid #444',
-          borderRadius: 4,
-        }}
+        className="flex-1 resize-none bg-transparent py-2 font-mono text-sm leading-normal text-ink caret-amber outline-none placeholder:text-faint disabled:opacity-50"
       />
       <button
         onClick={() => void handleSend()}
         disabled={!canSend}
-        style={{
-          padding: '6px 16px',
-          fontFamily: 'monospace',
-          cursor: canSend ? 'pointer' : 'default',
-          opacity: canSend ? 1 : 0.4,
-        }}
+        className={`oc-bevel mb-1 flex-none border border-amber px-4 py-2 font-mono text-[11px] tracking-widest transition-colors ${
+          canSend
+            ? 'cursor-pointer bg-amber text-bg hover:bg-amber-hi'
+            : 'bg-transparent text-faint'
+        }`}
       >
-        {sending ? '…' : 'Enviar'}
+        {sending ? '…' : 'ENVIAR ↵'}
       </button>
     </div>
   )

@@ -1,0 +1,87 @@
+/* theme.css — OpenClaw tokens (Tailwind v4) — identidad ámbar retrofuturista
+   Importar en main.tsx: import './theme.css'
+   Fuente (index.html <head>):
+   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+*/
+@import "tailwindcss";
+
+@theme {
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-bg: #060402;        /* negro cálido */
+  --color-panel: #0e0904;     /* superficies (cards, modal) */
+  --color-panel-2: #0b0703;   /* sidebar / statusbar */
+  --color-line: #3a2a12;      /* bordes internos 1px */
+  --color-line-hi: #6e4f1e;   /* bordes de controles */
+  --color-ink: #ecc06a;       /* texto principal (~11:1 sobre bg) */
+  --color-ink-soft: #c9a25c;  /* texto secundario / output */
+  --color-dim: #a87832;       /* labels, metadata */
+  --color-faint: #5c4620;     /* decorativo, hints */
+  --color-amber: #ffb000;     /* acento pleno (activo, titulares) */
+  --color-amber-hi: #ffd27a;  /* pico de brillo (alertas, glow) */
+  --color-amber-mid: #c07f10; /* intermedio (estados transitorios) */
+}
+
+@keyframes oc-blink { 0%, 55% { opacity: 1 } 56%, 100% { opacity: 0 } }
+
+@layer base {
+  html, body { background: var(--color-bg); }
+  ::selection { background: var(--color-amber); color: #060402; }
+  * { scrollbar-width: thin; scrollbar-color: var(--color-line) transparent; }
+}
+
+@utility oc-blink { animation: oc-blink 1s step-end infinite; }
+
+/* WaitingIndicator — cruz que se ensambla: 4 brazos convergen al centro y el
+   núcleo en diamante parpadea mientras se espera la respuesta del agente. */
+@keyframes oc-cross-arm-x {
+  0% { transform: scaleX(0); }
+  28% { transform: scaleX(1); }
+  80% { transform: scaleX(1); }
+  100% { transform: scaleX(0); }
+}
+@keyframes oc-cross-arm-y {
+  0% { transform: scaleY(0); }
+  28% { transform: scaleY(1); }
+  80% { transform: scaleY(1); }
+  100% { transform: scaleY(0); }
+}
+@keyframes oc-cross-core {
+  0%, 40% { opacity: 0; transform: rotate(45deg) scale(0.3); }
+  52% { opacity: 1; transform: rotate(45deg) scale(1); }
+  62% { opacity: 0.15; }
+  70% { opacity: 1; }
+  78% { opacity: 0.15; }
+  86% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(45deg) scale(0.3); }
+}
+@utility oc-cross-arm-x {
+  position: absolute;
+  background: var(--color-amber);
+  box-shadow: 0 0 6px rgb(255 176 0 / 0.55);
+  animation: oc-cross-arm-x 1.8s ease-in-out infinite backwards;
+}
+@utility oc-cross-arm-y {
+  position: absolute;
+  background: var(--color-amber);
+  box-shadow: 0 0 6px rgb(255 176 0 / 0.55);
+  animation: oc-cross-arm-y 1.8s ease-in-out infinite backwards;
+}
+@utility oc-cross-core {
+  position: absolute;
+  background: var(--color-amber-hi);
+  box-shadow: 0 0 9px rgb(255 210 122 / 0.7);
+  animation: oc-cross-core 1.8s ease-in-out infinite backwards;
+}
+/* esquina biselada estándar (paneles, botones) */
+@utility oc-bevel { clip-path: polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px); }
+@utility oc-bevel-sm { clip-path: polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px); }
+/* glow de texto/led */
+@utility oc-glow { text-shadow: 0 0 10px rgb(255 176 0 / 0.35); }
+/* overlay vidrio/CRT: aplicar a un div absoluto inset-0 pointer-events-none z-40 */
+@utility oc-glass {
+  background:
+    linear-gradient(112deg, rgb(255 214 150 / 0.055) 0%, rgb(255 214 150 / 0.015) 28%, transparent 45%),
+    radial-gradient(ellipse at 50% 50%, transparent 55%, rgb(0 0 0 / 0.28) 100%),
+    repeating-linear-gradient(0deg, rgb(0 0 0 / 0.10) 0px, rgb(0 0 0 / 0.10) 1px, transparent 1px, transparent 3px);
+}

@@ -1,5 +1,10 @@
 // Handshake: receive connect.challenge → build v3 signing payload → send connect frame → await hello-ok.
-// Uses client.id "webchat" / client.mode "webchat" — confirmed valid enums against the real server (section 7, DESIGN_DECISIONS.md).
+// client.id "webchat" + mode "ui": CONFIRMADO contra gateway 2026.6.2 (2026-08-08) que esta
+// combinación permite sessions.patch. Con mode "webchat" el gateway bloquea el patch
+// ("webchat clients cannot patch sessions; use chat.send for session-scoped updates") aunque
+// el id sea webchat-ui/openclaw-control-ui; con mode "ui" el patch funciona (scope admin).
+// gateway.controlUi.allowedOrigins quedó configurado (http://localhost:5173) por si se
+// necesitara el id webchat-ui en el futuro.
 
 import {
   clearDeviceToken,
@@ -11,13 +16,20 @@ import {
 import type { EventFrame, HelloOkPayload } from './frames.ts'
 
 const CLIENT_ID = 'webchat'
-const CLIENT_MODE = 'webchat'
+const CLIENT_MODE = 'ui'
 const CLIENT_VERSION = '0.1.0'
 const CLIENT_PLATFORM = 'web'
 // deviceFamily is empty string for web PWA — confirmed in probe signing payload (last field)
 const CLIENT_DEVICE_FAMILY = ''
 const ROLE = 'operator'
-const SCOPES = ['operator.read', 'operator.write']
+// operator.admin es REQUERIDO por RPC de gestión como sessions.patch (override de thinking) y
+// tts.speak. OJO con el mecanismo de pairing del gateway: para un device YA pareado, pedir más
+// scopes que su línea base aprobada genera PAIRING_REQUIRED ("scope upgrade pending approval")
+// hasta que alguien con admin apruebe la request (openclaw devices approve / Control UI / RPC
+// device.pair.approve). Devices nuevos en loopback se auto-aprueban con lo que pidan.
+// Esto rompió la app una vez (2026-08-08) al cambiar de read/write a read/write/admin sin
+// aprobar el upgrade del device del browser — la UI ya muestra el estado pairing_required.
+const SCOPES = ['operator.read', 'operator.write', 'operator.admin']
 
 export type SendFn = (method: string, params: Record<string, unknown>) => Promise<unknown>
 
