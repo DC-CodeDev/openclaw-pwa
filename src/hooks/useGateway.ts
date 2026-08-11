@@ -20,6 +20,7 @@ import {
   sessionsSubscribe,
   sessionsUnsubscribe,
 } from '../protocol/methods.ts'
+import { approvePendingPairing } from '../protocol/approvePairing.ts'
 import type { Session, Agent, ContentBlock, ChatMessage as GwChatMessage } from '../protocol/methods.ts'
 import type { ConnectionState } from '../protocol/client.ts'
 
@@ -69,6 +70,7 @@ interface UseGatewayReturn {
   createNewSession: () => Promise<void>
   selectSession: (key: string) => Promise<void>
   setActiveAgent: (agentId: string) => void
+  approvePairing: () => Promise<void>
 }
 
 export function useGateway(): UseGatewayReturn {
@@ -223,6 +225,17 @@ export function useGateway(): UseGatewayReturn {
 
   }, [])
 
+  // Approves the PWA's pending pairing request via a temporary ephemeral connection,
+  // then retriggers the main client's connect so it can reconnect immediately.
+  const approvePairing = useCallback(async (): Promise<void> => {
+    const url = import.meta.env.GATEWAY_URL as string
+    const token = import.meta.env.GATEWAY_TOKEN as string
+    await approvePendingPairing(url, token)
+    // connect() is safe to call again after PAIRING_REQUIRED: connectResolve was cleared,
+    // so it creates a fresh promise and opens a new socket.
+    gatewayClient.connect().catch(() => {})
+  }, [])
+
   // send() reads sessionKey at call time — never captures a stale closure value.
   const send = useCallback(async (text: string): Promise<void> => {
     const activeKey = useSessionStore.getState().sessionKey
@@ -266,5 +279,6 @@ export function useGateway(): UseGatewayReturn {
     createNewSession,
     selectSession,
     setActiveAgent,
+    approvePairing,
   }
 }

@@ -627,6 +627,18 @@ systemctl --user restart openclaw-pwa
 
 ---
 
+## 13bis. Botón de auto-aprobación de dispositivo — restricción de seguridad, leer antes de exponer fuera de localhost
+
+> Origen: el pairing se perdía en cada reinicio de PC porque el `IndexedDB` del navegador no siempre sobrevive entre sesiones (confirmado: 101 keypairs `webchat/ui` distintos generados por la misma PWA en `~/.openclaw/devices/paired.json`). El Gateway nunca perdió el estado — el problema era del lado del browser. Se agregó un botón "APROBAR DISPOSITIVO" en el header, visible cuando `connectionState === 'pairing_required'`, que resuelve el pairing sin pasar por terminal.
+
+**Cómo funciona:** el botón abre una WebSocket temporal usando `GATEWAY_TOKEN` (device efímero, `platform: 'linux'` para que el Gateway lo auto-apruebe por loopback), llama `device.pair.list` para encontrar la solicitud pendiente de la PWA, la aprueba con `device.pair.approve({ requestId })`, cierra la conexión temporal, y reconecta la PWA normalmente.
+
+**Restricción dura de seguridad, no opcional de leer más adelante:** `GATEWAY_TOKEN` queda embebido en el bundle de JavaScript servido al navegador (ya estaba expuesto antes de este cambio por otro motivo, no es una exposición nueva) — y ese token tiene privilegios de **admin completo** sobre el Gateway (`operator.admin`, `operator.read`, `operator.write`), no un alcance limitado a esta operación puntual. Hoy esto es seguro porque el Gateway solo escucha en `127.0.0.1` — nadie fuera de esta máquina puede llegar a `:8080` para extraer el token del código fuente servido.
+
+**El día que el Gateway o el PWA se expongan más allá de `localhost`** (IP de red local, port-forward, o cualquier acceso remoto — incluido el escenario ya mencionado de acceder desde el celular en la misma red) **este mecanismo se vuelve una vulnerabilidad real**: cualquiera con acceso a `:8080` podría extraer el token del bundle y administrar el Gateway completo, no solo aprobar su propio dispositivo. Esto requiere rediseño **antes** de esa exposición, no como reacción posterior — la arquitectura correcta para ese escenario es que el Gateway nunca reciba el token de admin compartido desde el browser (por ejemplo, un endpoint de aprobación con su propio scope limitado, o manteniendo la aprobación manual por consola solo para el caso de acceso remoto).
+
+---
+
 ## 12. Fuera de alcance en esta fase (explícito)
 
 - Input por voz / micrófono

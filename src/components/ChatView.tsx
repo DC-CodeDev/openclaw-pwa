@@ -1,6 +1,6 @@
 // Chat container: SessionList sidebar + header + message list + Composer.
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useGateway } from '../hooks/useGateway.ts'
 import { useSessionAudioState, stopAudioPlayback } from '../hooks/useSessionAudioState.ts'
 import { useSessionStore } from '../store/session.ts'
@@ -99,7 +99,11 @@ export default function ChatView() {
     createNewSession,
     selectSession,
     setActiveAgent,
+    approvePairing,
   } = useGateway()
+
+  const [pairingApproving, setPairingApproving] = useState(false)
+  const [pairingError, setPairingError] = useState<string | null>(null)
 
   const toolRecords = useToolsStore((s) => s.records)
 
@@ -107,6 +111,24 @@ export default function ChatView() {
   // de mensajes (store/messages.ts encola el texto del turno completado cuando uiMode === 'audio').
   const uiMode = useSessionStore((s) => s.uiMode)
   const audio = useSessionAudioState()
+
+  const handleApprovePairing = useCallback(async (e: React.MouseEvent) => {
+    e.preventDefault()
+    setPairingApproving(true)
+    setPairingError(null)
+    try {
+      await approvePairing()
+    } catch (err) {
+      setPairingError(err instanceof Error ? err.message : 'Error desconocido')
+    } finally {
+      setPairingApproving(false)
+    }
+  }, [approvePairing])
+
+  // Clear pairing error when state changes away from pairing_required
+  useEffect(() => {
+    if (connectionState !== 'pairing_required') setPairingError(null)
+  }, [connectionState])
 
   const setToolCallLimit = useCallback(async (limit: number): Promise<void> => {
     await runLimiterSetLimit(gatewayClient, limit)
@@ -237,12 +259,29 @@ export default function ChatView() {
               {activeAgentId.toUpperCase()}
             </button>
           )}
-          <span
-            className={`ml-auto flex items-center gap-2 text-[11px] tracking-widest ${CONNECTION_COLORS[connectionState] ?? 'text-dim'}`}
-          >
-            <span className="inline-block size-[7px] bg-current shadow-[0_0_6px_rgb(255_176_0/0.4)]" />
-            {CONNECTION_LABELS[connectionState] ?? connectionState}
-          </span>
+          {connectionState === 'pairing_required' ? (
+            <div className="ml-auto flex flex-col items-end gap-1">
+              <button
+                type="button"
+                onClick={handleApprovePairing}
+                disabled={pairingApproving}
+                className="oc-bevel-sm flex items-center gap-2 border border-amber-hi bg-[#1a0800] px-3 py-[5px] font-mono text-[11px] tracking-widest text-amber-hi transition-colors hover:bg-[#2a1000] disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+              >
+                <span className={`inline-block size-[7px] bg-amber-hi shadow-[0_0_6px_rgb(255_150_0/0.7)] ${pairingApproving ? '' : 'oc-blink'}`} />
+                {pairingApproving ? 'APROBANDO…' : 'APROBAR DISPOSITIVO'}
+              </button>
+              {pairingError && (
+                <span className="text-[10px] text-red-400 tracking-wide">{pairingError}</span>
+              )}
+            </div>
+          ) : (
+            <span
+              className={`ml-auto flex items-center gap-2 text-[11px] tracking-widest ${CONNECTION_COLORS[connectionState] ?? 'text-dim'}`}
+            >
+              <span className="inline-block size-[7px] bg-current shadow-[0_0_6px_rgb(255_176_0/0.4)]" />
+              {CONNECTION_LABELS[connectionState] ?? connectionState}
+            </span>
+          )}
         </header>
 
         {/* Modo Audio: AsciiCanvas consume audioLevel real + máquina de estados (sección 4) */}
