@@ -32,9 +32,12 @@ const WATCHDOG_IDLE_THRESHOLD_MS = 60_000
 const BACKOFF_BASE_MS = 1_000
 const BACKOFF_MAX_MS = 30_000
 
-// Synthetic event name used internally to notify React hooks of connection state changes.
-// Not a server-side event — prefixed with $ to distinguish it.
+// Synthetic event names used internally to notify React hooks of connection state changes.
+// Not server-side events — prefixed with $ to distinguish them.
 export const EVENT_CONNECTION_STATE = '$connectionState'
+// Fired with the pairing requestId string when entering pairing_required state.
+// The requestId comes from the WS close reason: "... (requestId: <uuid>)"
+export const EVENT_PAIRING_REQUEST_ID = '$pairingRequestId'
 
 // ─── GatewayClient ────────────────────────────────────────────────────────────
 
@@ -61,7 +64,7 @@ export class GatewayClient {
   private usedFastRetry = false
 
   private readonly visibilityHandler = () => {
-    if (document.visibilityState === 'visible' && this._state !== 'connected') {
+    if (document.visibilityState === 'visible' && this._state !== 'connected' && this._state !== 'pairing_required') {
       this.reconnectNow()
     }
   }
@@ -240,8 +243,8 @@ export class GatewayClient {
   private handleHandshakeError(err: Error): void {
     const code = err instanceof GatewayError ? err.code : err.message.split(':')[0].trim()
 
-    if (code === 'PAIRING_REQUIRED') {
-      // Do not retry — show UI message and wait for manual approval
+    if (code === 'PAIRING_REQUIRED' || code === 'NOT_PAIRED') {
+      // Do not retry — show UI message and wait for manual approval via CLI
       this.setState('pairing_required')
       const reject = this.connectReject
       this.connectResolve = null
@@ -281,9 +284,14 @@ export class GatewayClient {
       return
     }
 
-    // 1008 is "policy violation" — gateway uses it for pairing required
+    // 1008 is "policy violation" — gateway uses it for pairing required.
+    // The close reason includes the requestId: "... (requestId: <uuid>)"
     if (ev.code === 1008) {
+      // Cancel any reconnect timer scheduled by handleHandshakeError before onClose fired.
+      this.clearReconnectTimer()
       this.setState('pairing_required')
+      const match = ev.reason.match(/requestId:\s*([0-9a-f-]{36})/)
+      if (match) this.dispatch(EVENT_PAIRING_REQUEST_ID, match[1])
       const reject = this.connectReject
       this.connectResolve = null
       this.connectReject = null

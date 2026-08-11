@@ -3,7 +3,7 @@
 // accessed inside function bodies (never during module initialization), so ES live bindings resolve correctly.
 
 import { create } from 'zustand'
-import { EVENT_CONNECTION_STATE, type ConnectionState } from '../protocol/client.ts'
+import { EVENT_CONNECTION_STATE, EVENT_PAIRING_REQUEST_ID, type ConnectionState } from '../protocol/client.ts'
 import { gatewayClient } from '../protocol/gatewayInstance.ts'
 import { sessionsList, agentsList, sessionsUnsubscribe } from '../protocol/methods.ts'
 import type { Session, Agent } from '../protocol/methods.ts'
@@ -14,6 +14,7 @@ export type UiMode = 'texto' | 'audio'
 
 interface SessionStore {
   connectionState: ConnectionState
+  pairingRequestId: string | null
   uiMode: UiMode                // toggle Texto/Audio — ambos modos comparten el mismo store (sección 2)
   setUiMode: (mode: UiMode) => void
   sessionKey: string | null
@@ -31,6 +32,7 @@ interface SessionStore {
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
   connectionState: gatewayClient.connectionState,
+  pairingRequestId: null,
   uiMode: 'texto',
   sessionKey: null,
   agentId: null,
@@ -71,5 +73,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
 // Subscribe at module load — unsubscribe intentionally omitted (lifetime = app lifetime).
 gatewayClient.on(EVENT_CONNECTION_STATE, (state) => {
-  useSessionStore.setState({ connectionState: state as ConnectionState })
+  const s = state as ConnectionState
+  // Clear the requestId when leaving pairing_required so stale IDs don't persist.
+  useSessionStore.setState({ connectionState: s, ...(s !== 'pairing_required' ? { pairingRequestId: null } : {}) })
+})
+gatewayClient.on(EVENT_PAIRING_REQUEST_ID, (id) => {
+  useSessionStore.setState({ pairingRequestId: id as string })
 })

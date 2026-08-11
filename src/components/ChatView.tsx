@@ -1,6 +1,6 @@
 // Chat container: SessionList sidebar + header + message list + Composer.
 
-import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useGateway } from '../hooks/useGateway.ts'
 import { useSessionAudioState, stopAudioPlayback } from '../hooks/useSessionAudioState.ts'
 import { useSessionStore } from '../store/session.ts'
@@ -37,7 +37,7 @@ const CONNECTION_LABELS: Record<string, string> = {
   connecting: 'CONECTANDO…',
   reconnecting: 'RECONECTANDO…',
   connected: 'CONECTADO',
-  pairing_required: 'APROBAR DISPOSITIVO — openclaw devices approve',
+  pairing_required: 'PAIRING REQUERIDO',
 }
 
 const CONNECTION_COLORS: Record<string, string> = {
@@ -99,11 +99,11 @@ export default function ChatView() {
     createNewSession,
     selectSession,
     setActiveAgent,
-    approvePairing,
   } = useGateway()
 
-  const [pairingApproving, setPairingApproving] = useState(false)
-  const [pairingError, setPairingError] = useState<string | null>(null)
+  const pairingRequestId = useSessionStore((s) => s.pairingRequestId)
+  const [copied, setCopied] = useState(false)
+  const [clipboardFailed, setClipboardFailed] = useState(false)
 
   const toolRecords = useToolsStore((s) => s.records)
 
@@ -112,23 +112,17 @@ export default function ChatView() {
   const uiMode = useSessionStore((s) => s.uiMode)
   const audio = useSessionAudioState()
 
-  const handleApprovePairing = useCallback(async (e: React.MouseEvent) => {
-    e.preventDefault()
-    setPairingApproving(true)
-    setPairingError(null)
-    try {
-      await approvePairing()
-    } catch (err) {
-      setPairingError(err instanceof Error ? err.message : 'Error desconocido')
-    } finally {
-      setPairingApproving(false)
-    }
-  }, [approvePairing])
-
-  // Clear pairing error when state changes away from pairing_required
-  useEffect(() => {
-    if (connectionState !== 'pairing_required') setPairingError(null)
-  }, [connectionState])
+  const handleCopyApproveCommand = useCallback(() => {
+    if (!pairingRequestId) return
+    const cmd = `openclaw devices approve ${pairingRequestId}`
+    navigator.clipboard.writeText(cmd).then(() => {
+      setCopied(true)
+      setClipboardFailed(false)
+      setTimeout(() => setCopied(false), 2000)
+    }).catch(() => {
+      setClipboardFailed(true)
+    })
+  }, [pairingRequestId])
 
   const setToolCallLimit = useCallback(async (limit: number): Promise<void> => {
     await runLimiterSetLimit(gatewayClient, limit)
@@ -263,16 +257,23 @@ export default function ChatView() {
             <div className="ml-auto flex flex-col items-end gap-1">
               <button
                 type="button"
-                onClick={handleApprovePairing}
-                disabled={pairingApproving}
-                className="oc-bevel-sm flex items-center gap-2 border border-amber-hi bg-[#1a0800] px-3 py-[5px] font-mono text-[11px] tracking-widest text-amber-hi transition-colors hover:bg-[#2a1000] disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                onClick={handleCopyApproveCommand}
+                disabled={!pairingRequestId}
+                className="oc-bevel-sm flex items-center gap-2 border border-amber-hi bg-[#1a0800] px-3 py-[5px] font-mono text-[11px] tracking-widest text-amber-hi transition-colors hover:bg-[#2a1000] disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+                title={pairingRequestId ? `openclaw devices approve ${pairingRequestId}` : 'Esperando requestId del gateway...'}
               >
-                <span className={`inline-block size-[7px] bg-amber-hi shadow-[0_0_6px_rgb(255_150_0/0.7)] ${pairingApproving ? '' : 'oc-blink'}`} />
-                {pairingApproving ? 'APROBANDO…' : 'APROBAR DISPOSITIVO'}
+                <span className="oc-blink inline-block size-[7px] bg-amber-hi shadow-[0_0_6px_rgb(255_150_0/0.7)]" />
+                {copied ? 'COPIADO ✓' : 'COPIAR COMANDO'}
               </button>
-              {pairingError && (
-                <span className="text-[10px] text-red-400 tracking-wide">{pairingError}</span>
-              )}
+              {clipboardFailed && pairingRequestId ? (
+                <code className="select-all cursor-text rounded border border-amber-hi/30 bg-black/40 px-2 py-[3px] font-mono text-[9px] text-amber-hi/80 tracking-wide">
+                  openclaw devices approve {pairingRequestId}
+                </code>
+              ) : pairingRequestId ? (
+                <span className="text-[9px] text-amber-hi/50 font-mono tracking-wide">
+                  approve {pairingRequestId.slice(0, 8)}…
+                </span>
+              ) : null}
             </div>
           ) : (
             <span
